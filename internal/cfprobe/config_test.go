@@ -2,6 +2,7 @@ package cfprobe
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -79,6 +80,65 @@ func TestConfigPersistsUpdateProxy(t *testing.T) {
 	}
 	if got.StateDir != cfg.StateDir {
 		t.Fatalf("StateDir = %q, want %q", got.StateDir, cfg.StateDir)
+	}
+}
+
+func TestReadConfigInvalidatesRemoteMD5WhenManagedConfigChanges(t *testing.T) {
+	path := t.TempDir() + "/config.conf"
+	cfg := defaultConfig()
+	cfg.ServerID = "sid"
+	cfg.Secret = "secret"
+	cfg.WorkerURL = "https://worker.example.com/update"
+	cfg.ConfigMD5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := writeConfig(path, cfg); err != nil {
+		t.Fatalf("writeConfig returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	changed := strings.Replace(string(data), `RESET_DAY="1"`, `RESET_DAY="8"`, 1)
+	if err := os.WriteFile(path, []byte(changed), 0o600); err != nil {
+		t.Fatalf("change config: %v", err)
+	}
+	got, err := readConfig(path)
+	if err != nil {
+		t.Fatalf("readConfig returned error: %v", err)
+	}
+	if got.ConfigMD5 != "none" {
+		t.Fatalf("ConfigMD5 = %q, want none after local managed config changed", got.ConfigMD5)
+	}
+	if got.ResetDay != 8 {
+		t.Fatalf("ResetDay = %d, want locally parsed value before remote resync", got.ResetDay)
+	}
+}
+
+func TestReadConfigInvalidatesRemoteMD5WhenManagedFieldMissing(t *testing.T) {
+	path := t.TempDir() + "/config.conf"
+	cfg := defaultConfig()
+	cfg.ServerID = "sid"
+	cfg.Secret = "secret"
+	cfg.WorkerURL = "https://worker.example.com/update"
+	cfg.ConfigMD5 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := writeConfig(path, cfg); err != nil {
+		t.Fatalf("writeConfig returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	withoutResetDay := strings.Replace(string(data), `RESET_DAY="1"`+"\n", "", 1)
+	if err := os.WriteFile(path, []byte(withoutResetDay), 0o600); err != nil {
+		t.Fatalf("change config: %v", err)
+	}
+	got, err := readConfig(path)
+	if err != nil {
+		t.Fatalf("readConfig returned error: %v", err)
+	}
+	if got.ConfigMD5 != "none" {
+		t.Fatalf("ConfigMD5 = %q, want none when RESET_DAY is missing", got.ConfigMD5)
 	}
 }
 

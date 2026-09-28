@@ -285,21 +285,29 @@ func fetchUpdateBinary(configDir string, candidate updateCandidate, proxy string
 	defer cancel()
 	client := newUpdateHTTPClient(5*time.Minute, usePublicDNS)
 	checksums, checksumErr := downloadUpdateChecksums(ctx, client, candidate.TagName, proxy)
+	expected, err := requiredUpdateChecksum(checksums, candidate.AssetName, checksumErr)
+	if err != nil {
+		return "", err
+	}
 	if err := downloadToFile(ctx, client, rawURL, dest); err != nil {
 		return "", err
 	}
-	if checksumErr == nil {
-		expected, ok := checksumForAsset(checksums, candidate.AssetName)
-		if !ok {
-			_ = os.Remove(dest)
-			return "", fmt.Errorf("checksum missing for %s", candidate.AssetName)
-		}
-		if err := verifyFileSHA256(dest, expected); err != nil {
-			_ = os.Remove(dest)
-			return "", err
-		}
+	if err := verifyFileSHA256(dest, expected); err != nil {
+		_ = os.Remove(dest)
+		return "", err
 	}
 	return dest, nil
+}
+
+func requiredUpdateChecksum(checksums, assetName string, downloadErr error) (string, error) {
+	if downloadErr != nil {
+		return "", fmt.Errorf("download update checksums: %w", downloadErr)
+	}
+	expected, ok := checksumForAsset(checksums, assetName)
+	if !ok {
+		return "", fmt.Errorf("checksum missing for %s", assetName)
+	}
+	return expected, nil
 }
 
 func downloadToFile(ctx context.Context, client *http.Client, rawURL, dest string) error {

@@ -3,6 +3,7 @@ package cfprobe
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -305,6 +306,7 @@ func readConfig(path string) (Config, error) {
 	if cfg.ConfigMD5 == "" {
 		cfg.ConfigMD5 = "none"
 	}
+	cfg.ConfigFingerprint = strings.ToLower(strings.TrimSpace(values["CONFIG_FINGERPRINT"]))
 	normalizeConfigIntervals(&cfg)
 	if err := validateConfigIdentity(cfg); err != nil {
 		return cfg, err
@@ -316,6 +318,9 @@ func readConfig(path string) (Config, error) {
 	cfg.UpdateProxy, err = normalizeHTTPURL(cfg.UpdateProxy, true)
 	if err != nil {
 		return cfg, fmt.Errorf("UPDATE_PROXY 非法: %w", err)
+	}
+	if cfg.ConfigMD5 != "none" && (!hasCompleteManagedConfig(values) || cfg.ConfigFingerprint != managedConfigFingerprint(cfg)) {
+		cfg.ConfigMD5 = "none"
 	}
 	return cfg, nil
 }
@@ -389,12 +394,83 @@ func writeConfig(path string, cfg Config) error {
 		cfg.ConfigMD5 = "none"
 	}
 	writeKV("CONFIG_MD5", cfg.ConfigMD5)
+	cfg.ConfigFingerprint = managedConfigFingerprint(cfg)
+	writeKV("CONFIG_FINGERPRINT", cfg.ConfigFingerprint)
 
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+var managedConfigKeys = [...]string{
+	"COLLECT_INTERVAL",
+	"REPORT_INTERVAL",
+	"PROBE_INTERVAL",
+	"PROBE_WINDOW",
+	"PROBE_CONCURRENCY",
+	"PROBE_TIMEOUT_MS",
+	"IP_REFRESH_INTERVAL",
+	"REPORT_TIMEOUT_MS",
+	"DNS_CACHE_SECONDS",
+	"IP_LOOKUP_TIMEOUT_MS",
+	"IPV4_LOOKUP_URLS",
+	"IPV6_LOOKUP_URLS",
+	"PROBES",
+	"INTERFACE",
+	"RESET_DAY",
+	"CONNECTION_MODE",
+}
+
+func hasCompleteManagedConfig(values map[string]string) bool {
+	for _, key := range managedConfigKeys {
+		if _, ok := values[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func managedConfigFingerprint(cfg Config) string {
+	managed := struct {
+		CollectInterval   int
+		ReportInterval    int
+		ProbeInterval     int
+		ProbeWindow       int
+		ProbeConcurrency  int
+		ProbeTimeoutMS    int
+		IPRefreshInterval int
+		ReportTimeoutMS   int
+		DNSCacheSeconds   int
+		IPLookupTimeoutMS int
+		IPv4LookupURLs    []string
+		IPv6LookupURLs    []string
+		Probes            []ProbeNode
+		Interface         string
+		ResetDay          int
+		ConnectionMode    string
+	}{
+		CollectInterval:   cfg.CollectInterval,
+		ReportInterval:    cfg.ReportInterval,
+		ProbeInterval:     cfg.ProbeInterval,
+		ProbeWindow:       cfg.ProbeWindow,
+		ProbeConcurrency:  cfg.ProbeConcurrency,
+		ProbeTimeoutMS:    cfg.ProbeTimeoutMS,
+		IPRefreshInterval: cfg.IPRefreshInterval,
+		ReportTimeoutMS:   cfg.ReportTimeoutMS,
+		DNSCacheSeconds:   cfg.DNSCacheSeconds,
+		IPLookupTimeoutMS: cfg.IPLookupTimeoutMS,
+		IPv4LookupURLs:    cfg.IPv4LookupURLs,
+		IPv6LookupURLs:    cfg.IPv6LookupURLs,
+		Probes:            cfg.Probes,
+		Interface:         cfg.Interface,
+		ResetDay:          cfg.ResetDay,
+		ConnectionMode:    cfg.ConnectionMode,
+	}
+	encoded, _ := json.Marshal(managed)
+	sum := sha256.Sum256(encoded)
+	return fmt.Sprintf("%x", sum)
 }
 
 func normalizeConfigIntervals(cfg *Config) {

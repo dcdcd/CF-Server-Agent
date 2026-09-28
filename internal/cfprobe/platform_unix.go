@@ -663,12 +663,24 @@ func isProbeRunCommand(exe string, cmdline []string) bool {
 }
 
 func acquireInstanceLock(paths Paths) (func(), error) {
-	lockPath := filepath.Join(os.TempDir(), paths.ServiceName+".lock")
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o666)
+	lockDir := filepath.Dir(paths.PIDFile)
+	if paths.PIDFile == "" || lockDir == "." {
+		lockDir = filepath.Dir(paths.ConfigFile)
+	}
+	if lockDir == "" || lockDir == "." {
+		return nil, errors.New("无法确定实例锁目录")
+	}
+	lockPath := filepath.Join(lockDir, "."+paths.ServiceName+".lock")
+	if info, err := os.Lstat(lockPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("拒绝使用符号链接实例锁: %s", lockPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("检查运行实例锁失败 %s: %w", lockPath, err)
+	}
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("检查运行实例失败 %s: %w", lockPath, err)
 	}
-	_ = os.Chmod(lockPath, 0o666)
+	_ = os.Chmod(lockPath, 0o600)
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_, _ = f.Seek(0, io.SeekStart)
 		data, _ := io.ReadAll(f)

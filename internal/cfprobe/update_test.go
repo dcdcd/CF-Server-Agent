@@ -3,6 +3,7 @@ package cfprobe
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -193,6 +194,15 @@ func TestChecksumForAsset(t *testing.T) {
 	}
 	if _, ok := checksumForAsset(checksums, "missing"); ok {
 		t.Fatal("checksumForAsset() found unexpected asset")
+	}
+}
+
+func TestRequiredUpdateChecksumFailsClosed(t *testing.T) {
+	if _, err := requiredUpdateChecksum("", "cf-probe-linux-amd64", errors.New("network unavailable")); err == nil {
+		t.Fatal("requiredUpdateChecksum accepted a checksum download failure")
+	}
+	if _, err := requiredUpdateChecksum("unrelated", "cf-probe-linux-amd64", nil); err == nil {
+		t.Fatal("requiredUpdateChecksum accepted a missing asset checksum")
 	}
 }
 
