@@ -315,8 +315,8 @@ func clampMetric(v, minValue, maxValue float64) float64 {
 	return v
 }
 
-func sampleMetricsToMap(m Metrics) map[string]any {
-	return map[string]any{
+func sampleMetricsToMap(m Metrics, includeProbes bool) map[string]any {
+	metrics := map[string]any{
 		"cpu":           m.CPU,
 		"ram_total":     m.RAMTotal,
 		"ram_used":      m.RAMUsed,
@@ -325,6 +325,10 @@ func sampleMetricsToMap(m Metrics) map[string]any {
 		"net_in_speed":  m.NetInSpeed,
 		"net_out_speed": m.NetOutSpeed,
 	}
+	if includeProbes {
+		metrics["probes"] = m.Probes
+	}
+	return metrics
 }
 
 func toJSONSize(v any) int {

@@ -97,6 +97,7 @@ type ProbeSnapshot struct {
 	IPv4    string
 	IPv6    string
 	Results map[string]ProbeResult
+	Version uint64
 }
 
 type Metrics struct {
@@ -132,6 +133,7 @@ type Metrics struct {
 	IPv4         string
 	IPv6         string
 	Probes       map[string]ProbeMetric
+	probeVersion uint64
 }
 
 type BasicStats struct {

@@ -43,6 +43,7 @@ type Agent struct {
 
 	samples                  []metricSample
 	lastSample               time.Time
+	lastSampleProbeVersion   uint64
 	lastReport               time.Time
 	lastPost                 time.Time
 	lastPostAttempt          time.Time
@@ -531,14 +532,25 @@ func (a *Agent) tick() {
 		a.diskIO,
 	)
 	if shouldSample {
+		includeProbes := m.probeVersion > 0 && m.probeVersion != a.lastSampleProbeVersion
 		a.samples = append(a.samples, metricSample{
 			at:      now,
-			metrics: sampleMetricsToMap(m),
+			metrics: sampleMetricsToMap(m, includeProbes),
 		})
+		if includeProbes {
+			a.lastSampleProbeVersion = m.probeVersion
+		}
 		a.lastSample = now
+	}
+	if reportDue && m.probeVersion > 0 && m.probeVersion != a.lastSampleProbeVersion && len(a.samples) > 0 {
+		a.samples[len(a.samples)-1].metrics["probes"] = m.Probes
+		a.lastSampleProbeVersion = m.probeVersion
 	}
 	if shouldWSSReport || shouldPostReport {
 		if result := a.sendReport(cfg, m, shouldWSSReport, shouldPostReport, reportInterval); result.ok {
+			if len(a.samples) == 0 && m.probeVersion > 0 {
+				a.lastSampleProbeVersion = m.probeVersion
+			}
 			if result.viaWSS {
 				a.lastReport = now
 				a.lastPost = now
@@ -627,6 +639,7 @@ func (a *Agent) buildMetrics(cfg Config, cpu string, netNow NetBytes, rxSpeed, t
 		IPv4:         firstNonEmpty(probes.IPv4, "0"),
 		IPv6:         firstNonEmpty(probes.IPv6, "0"),
 		Probes:       probeMetrics,
+		probeVersion: probes.Version,
 	}
 }
 
@@ -919,6 +932,7 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				if len(snap.Results) == 0 && len(cfg.Probes) > 0 {
 					snap.Results = a.probes.Results
 				}
+				snap.Version = a.probes.Version + 1
 				a.probes = snap
 				a.mu.Unlock()
 				a.log.debugf("network probe update ipv4=%s ipv6=%s results=%d configured=%d", snap.IPv4, snap.IPv6, len(snap.Results), len(cfg.Probes))

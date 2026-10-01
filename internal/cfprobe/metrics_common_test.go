@@ -40,6 +40,24 @@ func TestMetricsToMapIncludesDailyTraffic(t *testing.T) {
 	}
 }
 
+func TestSampleMetricsToMapIncludesProbesOnlyAfterProbeUpdate(t *testing.T) {
+	probes := map[string]ProbeMetric{
+		"edge": {RTT: 21, Loss: 0},
+	}
+	metrics := Metrics{CPU: "1.25", Probes: probes}
+
+	withoutProbes := sampleMetricsToMap(metrics, false)
+	if _, ok := withoutProbes["probes"]; ok {
+		t.Fatal("unchanged probe results should not be repeated in every sample")
+	}
+
+	withProbes := sampleMetricsToMap(metrics, true)
+	got, ok := withProbes["probes"].(map[string]ProbeMetric)
+	if !ok || got["edge"].RTT != 21 {
+		t.Fatalf("probe sample = %#v, want edge RTT 21", withProbes["probes"])
+	}
+}
+
 func TestDiskUsageMBFromBlocksUsesFreeBlocksForUsedValue(t *testing.T) {
 	total, used, ok := diskUsageMBFromBlocks(100, 65, int64(bytesPerMiB))
 	if !ok {
