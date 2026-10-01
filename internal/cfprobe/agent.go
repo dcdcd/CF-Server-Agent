@@ -46,7 +46,6 @@ type Agent struct {
 	lastReport               time.Time
 	lastPost                 time.Time
 	lastPostAttempt          time.Time
-	probeReportPending       bool
 	lastConfigStateReportAt  time.Time
 	lastConfigStateReportMD5 string
 	updateMu                 sync.Mutex
@@ -474,13 +473,6 @@ func (a *Agent) tick() {
 	if collectInterval := effectiveCollectInterval(cfg); collectInterval > 0 {
 		shouldSample = a.lastSample.IsZero() || now.Sub(a.lastSample) >= collectInterval
 	}
-	a.mu.RLock()
-	probeReportPending := a.probeReportPending
-	a.mu.RUnlock()
-	if probeReportPending {
-		shouldWSSReport = wssConnected
-		shouldPostReport = !wssConnected && postAllowed
-	}
 	if !shouldWSSReport && !shouldPostReport && !shouldSample {
 		return
 	}
@@ -547,9 +539,6 @@ func (a *Agent) tick() {
 	}
 	if shouldWSSReport || shouldPostReport {
 		if result := a.sendReport(cfg, m, shouldWSSReport, shouldPostReport, reportInterval); result.ok {
-			a.mu.Lock()
-			a.probeReportPending = false
-			a.mu.Unlock()
 			if result.viaWSS {
 				a.lastReport = now
 				a.lastPost = now
@@ -933,12 +922,9 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				a.probes = snap
 				a.mu.Unlock()
 				a.log.debugf("network probe update ipv4=%s ipv6=%s results=%d configured=%d", snap.IPv4, snap.IPv6, len(snap.Results), len(cfg.Probes))
-				// The next report must include the fresh probe snapshot instead of
-				// waiting for the normal WSS interval.
-				a.mu.Lock()
-				a.probeReportPending = true
-				a.mu.Unlock()
-				a.wakeTick()
+				// The regular sampler will attach this snapshot to the next point.
+				// Keeping probe completion off the report scheduler preserves a
+				// stable sampling cadence and avoids extra idle-time reports.
 			}
 			nextIP := ipInterval
 			if !lastIP.IsZero() {
