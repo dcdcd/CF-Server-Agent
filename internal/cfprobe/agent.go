@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -49,6 +50,7 @@ type Agent struct {
 	lastPostAttempt          time.Time
 	lastConfigStateReportAt  time.Time
 	lastConfigStateReportMD5 string
+	postFallbackPending      atomic.Bool
 	updateMu                 sync.Mutex
 	reporter                 *reportTransport
 	wake                     chan struct{}
@@ -410,6 +412,7 @@ func (a *Agent) disableWSSRuntime(reason string) {
 	a.wssRuntimeDisabledAt = now
 	a.wssRuntimeDisabledReason = reason
 	a.wssRuntimeMu.Unlock()
+	a.postFallbackPending.Store(true)
 	a.log.info("WSS temporarily disabled reason=%s; using POST report", reason)
 	if a.reporter != nil {
 		a.reporter.stop(reason)
@@ -426,6 +429,7 @@ func (a *Agent) clearWSSRuntimeDisabled(reason string) {
 	if !wasDisabled {
 		return
 	}
+	a.postFallbackPending.Store(false)
 	if reason == "" {
 		reason = "server_active"
 	}
@@ -464,7 +468,7 @@ func (a *Agent) tick() {
 	wssEnabled := a.usesWSSConfig(cfg)
 	wssConnected := wssEnabled && a.reporter != nil && a.reporter.connected()
 	shouldWSSReport := wssConnected && (a.lastReport.IsZero() || now.Sub(a.lastReport) >= a.currentWSSReportIntervalForConfig(cfg))
-	postDue := !wssConnected && (a.lastPost.IsZero() || now.Sub(a.lastPost) >= reportInterval)
+	postDue := !wssConnected && (a.postFallbackPending.Load() || a.lastPost.IsZero() || now.Sub(a.lastPost) >= reportInterval)
 	postAllowed := !wssEnabled || a.reporter == nil || a.reporter.postFallbackAllowed()
 	if postDue && !postAllowed && wssEnabled && a.reporter != nil {
 		a.reporter.logPostFallbackDelayed()
@@ -556,6 +560,7 @@ func (a *Agent) tick() {
 				a.lastPost = now
 			} else if result.viaPOST {
 				a.lastPost = now
+				a.postFallbackPending.Store(false)
 			}
 			a.samples = nil
 		}

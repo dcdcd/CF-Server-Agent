@@ -510,6 +510,9 @@ func TestAgentWSSRuntimeHeadersTemporarilyDisableAndRestoreWSS(t *testing.T) {
 	if got := agent.currentWSSReportInterval(); got != time.Minute {
 		t.Fatalf("currentWSSReportInterval() = %s, want 1m while runtime disabled", got)
 	}
+	if !agent.postFallbackPending.Load() {
+		t.Fatal("inactive schedule header did not request an immediate POST fallback")
+	}
 	select {
 	case <-agent.wake:
 	default:
@@ -532,6 +535,9 @@ func TestAgentWSSRuntimeHeadersTemporarilyDisableAndRestoreWSS(t *testing.T) {
 	})
 	if !agent.usesWSS() {
 		t.Fatal("usesWSS() = false after active schedule header")
+	}
+	if agent.postFallbackPending.Load() {
+		t.Fatal("active schedule header did not clear the pending POST fallback")
 	}
 }
 
