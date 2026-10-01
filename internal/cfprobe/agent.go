@@ -535,6 +535,7 @@ func (a *Agent) tick() {
 		a.traffic.TXPeriod,
 		a.traffic.RXDaily,
 		a.traffic.TXDaily,
+		now,
 		a.diskIO,
 	)
 	if shouldSample {
@@ -587,7 +588,7 @@ func (a *Agent) sampleDiskIO(now time.Time) DiskIOStats {
 	return stats
 }
 
-func (a *Agent) buildMetrics(cfg Config, cpu string, netNow NetBytes, rxSpeed, txSpeed, rxMonthly, txMonthly, rxDaily, txDaily uint64, diskIO DiskIOStats) Metrics {
+func (a *Agent) buildMetrics(cfg Config, cpu string, netNow NetBytes, rxSpeed, txSpeed, rxMonthly, txMonthly, rxDaily, txDaily uint64, now time.Time, diskIO DiskIOStats) Metrics {
 	a.mu.RLock()
 	probes := a.probes
 	a.mu.RUnlock()
@@ -621,6 +622,8 @@ func (a *Agent) buildMetrics(cfg Config, cpu string, netNow NetBytes, rxSpeed, t
 		NetTXMonthly: uintString(txMonthly),
 		NetRXDaily:   uintString(rxDaily),
 		NetTXDaily:   uintString(txDaily),
+		DayStart:     strconv.FormatInt(startOfLocalDay(now).Unix(), 10),
+		DayEnd:       strconv.FormatInt(endOfLocalDay(now).Unix(), 10),
 		NetInSpeed:   uintString(rxSpeed),
 		NetOutSpeed:  uintString(txSpeed),
 		OS:           firstNonEmpty(b.OSName, runtime.GOOS),

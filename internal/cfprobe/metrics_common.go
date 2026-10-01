@@ -216,7 +216,7 @@ func parseNvidiaFloat(raw string) any {
 }
 
 func metricsToMap(m Metrics) map[string]any {
-	return map[string]any{
+	metrics := map[string]any{
 		"cpu":            m.CPU,
 		"ram_total":      m.RAMTotal,
 		"ram_used":       m.RAMUsed,
@@ -248,6 +248,9 @@ func metricsToMap(m Metrics) map[string]any {
 		"ip_v6":          m.IPv6,
 		"probes":         m.Probes,
 	}
+	metrics["traffic_day_start"] = m.DayStart
+	metrics["traffic_day_end"] = m.DayEnd
+	return metrics
 }
 
 func diskIOStatsFromCounters(prev, current DiskIOCounters, elapsedSeconds float64) DiskIOStats {

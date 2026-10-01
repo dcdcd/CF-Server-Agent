@@ -67,3 +67,17 @@ func TestAdvanceTrafficStateHandlesCounterReset(t *testing.T) {
 		t.Fatalf("daily traffic after reset = %d/%d, want 25/40", state.RXDaily, state.TXDaily)
 	}
 }
+
+func TestLocalTrafficDayBoundsUseCalendarMidnight(t *testing.T) {
+	location := time.FixedZone("UTC+8", 8*60*60)
+	now := time.Date(2026, time.September, 30, 23, 59, 30, 0, location)
+	wantStart := time.Date(2026, time.September, 30, 0, 0, 0, 0, location)
+	wantEnd := time.Date(2026, time.October, 1, 0, 0, 0, 0, location)
+
+	if got := startOfLocalDay(now); !got.Equal(wantStart) {
+		t.Fatalf("day start = %s, want %s", got, wantStart)
+	}
+	if got := endOfLocalDay(now); !got.Equal(wantEnd) {
+		t.Fatalf("day end = %s, want %s", got, wantEnd)
+	}
+}

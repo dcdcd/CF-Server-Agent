@@ -120,6 +120,11 @@ func startOfLocalDay(now time.Time) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, now.Location())
 }
 
+func endOfLocalDay(now time.Time) time.Time {
+	year, month, day := now.Date()
+	return time.Date(year, month, day+1, 0, 0, 0, 0, now.Location())
+}
+
 func applyTrafficCorrection(path string, current NetBytes, iface string, rxGB, txGB string) error {
 	rx, err := parseTrafficCorrectionGB(rxGB)
 	if err != nil {

@@ -116,6 +116,8 @@ type Metrics struct {
 	NetTXMonthly string
 	NetRXDaily   string
 	NetTXDaily   string
+	DayStart     string
+	DayEnd       string
 	NetInSpeed   string
 	NetOutSpeed  string
 	OS           string

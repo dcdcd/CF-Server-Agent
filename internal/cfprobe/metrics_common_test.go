@@ -28,9 +28,15 @@ func TestCPUPercentStringReportsPercentUnits(t *testing.T) {
 }
 
 func TestMetricsToMapIncludesDailyTraffic(t *testing.T) {
-	got := metricsToMap(Metrics{NetRXDaily: "4096", NetTXDaily: "2048"})
+	got := metricsToMap(Metrics{
+		NetRXDaily: "4096", NetTXDaily: "2048",
+		DayStart: "1790784000", DayEnd: "1790870400",
+	})
 	if got["net_rx_daily"] != "4096" || got["net_tx_daily"] != "2048" {
 		t.Fatalf("daily traffic fields = %v/%v, want 4096/2048", got["net_rx_daily"], got["net_tx_daily"])
+	}
+	if got["traffic_day_start"] != "1790784000" || got["traffic_day_end"] != "1790870400" {
+		t.Fatalf("traffic day bounds = %v/%v", got["traffic_day_start"], got["traffic_day_end"])
 	}
 }
 
