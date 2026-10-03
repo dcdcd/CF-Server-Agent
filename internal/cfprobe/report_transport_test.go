@@ -112,6 +112,7 @@ func TestHTTPCollectIntervalZeroDoesNotEnableSamples(t *testing.T) {
 
 func TestBuildReportBodyUsesCurrentPOSTShape(t *testing.T) {
 	agent := Agent{
+		version: "test",
 		cfg: Config{
 			ServerID:       "sid",
 			Secret:         "secret",
@@ -131,10 +132,17 @@ func TestBuildReportBodyUsesCurrentPOSTShape(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("payload is not JSON: %v", err)
 	}
-	for _, key := range []string{"id", "secret", "metrics", "collect_interval", "report_interval"} {
+	for _, key := range []string{"id", "secret", "agent_version", "metrics", "collect_interval", "report_interval"} {
 		if _, ok := payload[key]; !ok {
 			t.Fatalf("payload missing required key %q: %s", key, body)
 		}
+	}
+	var agentVersion string
+	if err := json.Unmarshal(payload["agent_version"], &agentVersion); err != nil {
+		t.Fatalf("agent_version is not a string: %v", err)
+	}
+	if agentVersion != "test" {
+		t.Fatalf("agent_version = %q, want test", agentVersion)
 	}
 	if _, ok := payload["samples"]; ok {
 		t.Fatalf("payload unexpectedly includes samples without buffered samples: %s", body)

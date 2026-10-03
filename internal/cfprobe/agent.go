@@ -721,6 +721,7 @@ func (a *Agent) buildReportBodyForConfig(cfg Config, m Metrics, reportAt time.Ti
 	payload := map[string]any{
 		"id":               cfg.ServerID,
 		"secret":           cfg.Secret,
+		"agent_version":    a.version,
 		"time":             a.clock.snapshot(reportAt),
 		"metrics":          a.metricsForReport(m, reportAt),
 		"collect_interval": cfg.CollectInterval,
