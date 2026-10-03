@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = "Stop"
 
-$Repo = "dengchangdong/CF-Server-Agent"
+$Repo = "dcdcd/CF-Server-Agent"
 $GitHubProxy = ""
 $InstallVersion = "latest"
 $AutoUpdateEnabled = $false

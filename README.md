@@ -9,7 +9,7 @@ CF-Server-Monitor 的轻量 Go Agent。Agent 采集主机资源、网络流量�
 Linux、macOS、FreeBSD：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dengchangdong/CF-Server-Agent/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/dcdcd/CF-Server-Agent/main/install.sh \
   | sh -s -- install -id=SERVER_ID -secret=SECRET -url=https://monitor.example.com/update
 ```
 
@@ -17,14 +17,14 @@ Windows PowerShell：
 
 ```powershell
 $script = Join-Path $env:TEMP "cf-server-agent-install.ps1"
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/dengchangdong/CF-Server-Agent/main/install.ps1" -OutFile $script -UseBasicParsing
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/dcdcd/CF-Server-Agent/main/install.ps1" -OutFile $script -UseBasicParsing
 & $script install -id=SERVER_ID -secret=SECRET -url=https://monitor.example.com/update
 ```
 
 卸载：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dengchangdong/CF-Server-Agent/main/install.sh | sh -s -- uninstall
+curl -fsSL https://raw.githubusercontent.com/dcdcd/CF-Server-Agent/main/install.sh | sh -s -- uninstall
 ```
 
 ## 当前配置

@@ -21,7 +21,7 @@ import (
 
 const (
 	autoUpdateLockTTL        = 30 * time.Minute
-	defaultUpdateRepo        = "dengchangdong/CF-Server-Agent"
+	defaultUpdateRepo        = "dcdcd/CF-Server-Agent"
 	githubAPIBaseURL         = "https://api.github.com"
 	snapshotVersionPrefix    = "Snapshot-"
 	updateChecksumsAssetName = "checksums.txt"
@@ -188,7 +188,7 @@ func selectLatestSnapshotRelease(releases []githubRelease, assetName string) (up
 	var latest updateCandidate
 	found := false
 	for _, release := range releases {
-		if release.Draft || !release.Prerelease || !strings.HasPrefix(release.TagName, snapshotVersionPrefix) {
+		if release.Draft || !strings.HasPrefix(release.TagName, snapshotVersionPrefix) {
 			continue
 		}
 		if _, ok := findReleaseAsset(release, assetName); !ok {

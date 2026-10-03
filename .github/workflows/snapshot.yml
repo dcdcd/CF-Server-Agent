@@ -101,14 +101,13 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --notes "Automated snapshot build ${VERSION} from ${GITHUB_SHA}." \
-            --prerelease \
             dist/*
 
           gh release list \
             --repo "${{ github.repository }}" \
             --limit 1000 \
             --json tagName,isPrerelease \
-            --jq '.[] | select(.isPrerelease and (.tagName | startswith("Snapshot-"))) | .tagName' |
+            --jq '.[] | select(.tagName | startswith("Snapshot-")) | .tagName' |
           while IFS= read -r tag; do
             if [ -z "$tag" ] || [ "$tag" = "$VERSION" ]; then
               continue

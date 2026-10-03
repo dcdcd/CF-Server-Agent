@@ -95,7 +95,7 @@ func TestSelectLatestSnapshotRelease(t *testing.T) {
 		testGitHubRelease("beta-2608051500", true, false, base.Add(6*time.Hour), assetName),
 		testGitHubRelease("Snapshot-2608051600", true, false, base.Add(7*time.Hour), "cf-probe-linux-arm64"),
 		testGitHubRelease("Snapshot-2608051200", true, false, base, assetName),
-		testGitHubRelease("Snapshot-2608051300", true, false, base.Add(time.Hour), assetName),
+		testGitHubRelease("Snapshot-2608051300", false, false, base.Add(time.Hour), assetName),
 	}
 
 	got, ok := selectLatestSnapshotRelease(releases, assetName)
@@ -112,7 +112,7 @@ func TestUpdateAssetDownloadURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updateAssetDownloadURL() error = %v", err)
 	}
-	want := "https://github.com/dengchangdong/CF-Server-Agent/releases/download/v1.2.3/cf-probe-linux-amd64"
+	want := "https://github.com/dcdcd/CF-Server-Agent/releases/download/v1.2.3/cf-probe-linux-amd64"
 	if got != want {
 		t.Fatalf("asset url = %q, want %q", got, want)
 	}
@@ -123,7 +123,7 @@ func TestUpdateAssetDownloadURLAppliesProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updateAssetDownloadURL() error = %v", err)
 	}
-	want := "https://gh-proxy.example.com/https://github.com/dengchangdong/CF-Server-Agent/releases/download/v1.2.3/cf-probe-linux-amd64"
+	want := "https://gh-proxy.example.com/https://github.com/dcdcd/CF-Server-Agent/releases/download/v1.2.3/cf-probe-linux-amd64"
 	if got != want {
 		t.Fatalf("proxied asset url = %q, want %q", got, want)
 	}

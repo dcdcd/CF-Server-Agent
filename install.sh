@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="dengchangdong/CF-Server-Agent"
+REPO="dcdcd/CF-Server-Agent"
 GITHUB_PROXY=""
 INSTALL_VERSION="latest"
 
