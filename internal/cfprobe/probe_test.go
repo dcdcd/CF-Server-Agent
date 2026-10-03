@@ -254,6 +254,29 @@ func TestRollingProbeHistoryAggregatesTwoMinuteWindow(t *testing.T) {
 	}
 }
 
+func TestRollingProbeHistoryPreservesPartialPacketLoss(t *testing.T) {
+	const samples = 4
+	now := time.Unix(1000, 0)
+	history := rollingProbeHistory{}
+	results := []ProbeResult{
+		{RTTMs: 10, Loss: 0, OK: true},
+		{RTTMs: 20, Loss: 25, OK: true},
+		{RTTMs: 30, Loss: 50, OK: true},
+		{RTTMs: 40, Loss: 0, OK: true},
+	}
+	for i, result := range results {
+		history.add(now.Add(time.Duration(i)*20*time.Second), "example.com", result, samples)
+	}
+
+	got := history.snapshot(now.Add(60*time.Second), 2*time.Minute, samples)
+	if !got.OK {
+		t.Fatal("expected partial packet loss to keep a valid latency result")
+	}
+	if got.Loss != 19 {
+		t.Fatalf("Loss = %d, want 19", got.Loss)
+	}
+}
+
 func TestRollingProbeHistoryKeepsSixSamples(t *testing.T) {
 	const interval = 20 * time.Second
 	const window = 2 * time.Minute

@@ -16,6 +16,7 @@ const (
 	connectionModeHTTP          = "http"
 	pingModeTCP                 = "tcp"
 	pingModeICMP                = "icmp"
+	probePacketsPerRun          = 4
 )
 
 type Config struct {

@@ -142,13 +142,19 @@ func (h rollingProbeHistory) snapshot(now time.Time, window time.Duration, maxSa
 	if maxSamples > 0 && len(lossSamples) > maxSamples {
 		lossSamples = lossSamples[len(lossSamples)-maxSamples:]
 	}
-	lost := 0
+	totalLoss := 0
 	for _, sample := range lossSamples {
-		if !sample.result.OK {
-			lost++
+		loss := sample.result.Loss
+		if loss < 0 || loss > 100 {
+			if sample.result.OK {
+				loss = 0
+			} else {
+				loss = 100
+			}
 		}
+		totalLoss += loss
 	}
-	loss := lost * 100 / len(lossSamples)
+	loss := (totalLoss + len(lossSamples)/2) / len(lossSamples)
 
 	if len(values) == 0 {
 		return ProbeResult{RTTMs: -1, Loss: loss, OK: false}
@@ -898,7 +904,7 @@ func (a *Agent) networkWorker(ctx context.Context) {
 							return
 						}
 						defer func() { <-semaphore }()
-						result := measureProbe(node.Mode, node.Target, 1, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
+						result := measureProbe(node.Mode, node.Target, probePacketsPerRun, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
 						select {
 						case results <- measuredProbe{node: node, result: result}:
 						case <-ctx.Done():
