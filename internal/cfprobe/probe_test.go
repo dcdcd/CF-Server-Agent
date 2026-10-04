@@ -211,6 +211,45 @@ func TestBuildProbeResultCalculatesLossFromFailedSamples(t *testing.T) {
 	}
 }
 
+func TestBuildProbeResultUsesTenPercentICMPResolution(t *testing.T) {
+	got := buildProbeResult(icmpProbePacketsPerRun, []int{10, 11, 12, 13, 14, 15, 16, 17, 18})
+	if !got.OK {
+		t.Fatal("expected probe result to be OK")
+	}
+	if got.Loss != 10 {
+		t.Fatalf("Loss = %d, want 10", got.Loss)
+	}
+}
+
+func TestICMPBatchIntervalFitsConfiguredTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		count   int
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{name: "default timeout", count: 10, timeout: 1500 * time.Millisecond, want: 50 * time.Millisecond},
+		{name: "minimum timeout", count: 10, timeout: 250 * time.Millisecond, want: 12500 * time.Microsecond},
+		{name: "single packet", count: 1, timeout: 250 * time.Millisecond, want: 50 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := icmpBatchInterval(tt.count, tt.timeout); got != tt.want {
+				t.Fatalf("icmpBatchInterval() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProbeAttemptsPerRunUsesHigherICMPSampleCount(t *testing.T) {
+	if got := probeAttemptsPerRun(pingModeICMP); got != 10 {
+		t.Fatalf("ICMP attempts = %d, want 10", got)
+	}
+	if got := probeAttemptsPerRun(pingModeTCP); got != 4 {
+		t.Fatalf("TCP attempts = %d, want 4", got)
+	}
+}
+
 func TestBuildProbeResultAllSamplesLost(t *testing.T) {
 	got := buildProbeResult(4, nil)
 	if got.OK {

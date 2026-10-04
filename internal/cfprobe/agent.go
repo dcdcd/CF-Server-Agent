@@ -905,7 +905,8 @@ func (a *Agent) networkWorker(ctx context.Context) {
 							return
 						}
 						defer func() { <-semaphore }()
-						result := measureProbe(node.Mode, node.Target, probePacketsPerRun, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
+						attempts := probeAttemptsPerRun(node.Mode)
+						result := measureProbe(node.Mode, node.Target, attempts, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
 						select {
 						case results <- measuredProbe{node: node, result: result}:
 						case <-ctx.Done():

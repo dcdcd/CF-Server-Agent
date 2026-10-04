@@ -206,40 +206,87 @@ func httpPing(target string, timeout time.Duration) (int, error) {
 	return ms, fmt.Errorf("http status %d", resp.StatusCode)
 }
 
-func icmpPing(target string, timeout time.Duration) (int, error) {
+func resolveICMPTarget(target string, timeout time.Duration) (string, error) {
 	host, _, err := splitProbeTarget(target, defaultTaskPingTCPPort)
 	if err != nil {
 		host = strings.Trim(strings.TrimSpace(target), "[]")
 	}
 	if host == "" {
-		return -1, errors.New("empty target")
+		return "", errors.New("empty target")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	ip, err := resolveFirstIP(ctx, host)
 	defer cancel()
 	if err != nil {
-		return -1, err
+		return "", err
+	}
+	return ip, nil
+}
+
+func icmpBatchInterval(count int, timeout time.Duration) time.Duration {
+	const preferred = 50 * time.Millisecond
+	if count <= 1 || timeout <= 0 {
+		return preferred
+	}
+	interval := timeout / time.Duration(count*2)
+	if interval > preferred {
+		return preferred
+	}
+	if interval < time.Millisecond {
+		return time.Millisecond
+	}
+	return interval
+}
+
+func probeAttemptsPerRun(kind string) int {
+	if kind == pingModeICMP {
+		return icmpProbePacketsPerRun
+	}
+	return tcpProbeAttemptsPerRun
+}
+
+func measureICMPProbe(target string, count int, timeout time.Duration) (ProbeResult, error) {
+	if count < 1 {
+		count = 1
+	}
+	ip, err := resolveICMPTarget(target, timeout)
+	if err != nil {
+		return ProbeResult{RTTMs: -1, Loss: 100, OK: false}, err
 	}
 
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
-		return -1, err
+		return ProbeResult{RTTMs: -1, Loss: 100, OK: false}, err
 	}
-	pinger.Count = 1
+	pinger.Count = count
 	pinger.Timeout = timeout
+	pinger.Interval = icmpBatchInterval(count, timeout)
 	pinger.SetPrivileged(true)
 	if err := pinger.Run(); err != nil {
-		return -1, err
+		return ProbeResult{RTTMs: -1, Loss: 100, OK: false}, err
 	}
 	stats := pinger.Statistics()
-	if stats.PacketsRecv == 0 {
-		return -1, errors.New("no packets received")
+	values := make([]int, 0, len(stats.Rtts))
+	for _, rtt := range stats.Rtts {
+		ms := int(rtt.Milliseconds())
+		if ms < 1 {
+			ms = 1
+		}
+		values = append(values, ms)
 	}
-	ms := int(stats.AvgRtt.Milliseconds())
-	if ms < 1 {
-		ms = 1
+	result := buildProbeResult(count, values)
+	if !result.OK {
+		return result, errors.New("no packets received")
 	}
-	return ms, nil
+	return result, nil
+}
+
+func icmpPing(target string, timeout time.Duration) (int, error) {
+	result, err := measureICMPProbe(target, 1, timeout)
+	if err != nil {
+		return -1, err
+	}
+	return result.RTTMs, nil
 }
 
 func measureProbe(kind, target string, count, defaultPort int, timeout time.Duration, log logger) ProbeResult {
@@ -258,16 +305,17 @@ func measureProbe(kind, target string, count, defaultPort int, timeout time.Dura
 	if timeout <= 0 {
 		timeout = defaultPingTimeout
 	}
+	if kind == pingModeICMP {
+		result, err := measureICMPProbe(target, count, timeout)
+		if err != nil {
+			log.debugf("probe %s failed target=%s err=%v", kind, target, err)
+		}
+		return result
+	}
 	ok := 0
 	values := make([]int, 0, count)
 	for i := 0; i < count; i++ {
-		var ms int
-		var err error
-		if kind == pingModeICMP {
-			ms, err = icmpPing(target, timeout)
-		} else {
-			ms, err = tcpPing(target, defaultPort, timeout)
-		}
+		ms, err := tcpPing(target, defaultPort, timeout)
 		if err == nil {
 			ok++
 			values = append(values, ms)
