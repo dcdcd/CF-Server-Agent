@@ -238,11 +238,33 @@ func icmpBatchInterval(count int, timeout time.Duration) time.Duration {
 	return interval
 }
 
-func probeAttemptsPerRun(kind string) int {
+func probeAttemptsPerMeasurement(kind string) int {
 	if kind == pingModeICMP {
-		return icmpProbePacketsPerRun
+		return 1
 	}
 	return tcpProbeAttemptsPerRun
+}
+
+func icmpSampleInterval(probeInterval time.Duration) time.Duration {
+	if probeInterval <= 0 {
+		return time.Second
+	}
+	interval := probeInterval / icmpProbeSamplesPerInterval
+	if interval < time.Millisecond {
+		return time.Millisecond
+	}
+	return interval
+}
+
+func probeHistorySampleLimit(kind string, window, probeInterval time.Duration) int {
+	interval := probeInterval
+	if kind == pingModeICMP {
+		interval = icmpSampleInterval(probeInterval)
+	}
+	if interval <= 0 || window <= 0 {
+		return 1
+	}
+	return int((window-1)/interval) + 1
 }
 
 func measureICMPProbe(target string, count int, timeout time.Duration) (ProbeResult, error) {

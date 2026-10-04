@@ -17,7 +17,7 @@ const (
 	pingModeTCP                 = "tcp"
 	pingModeICMP                = "icmp"
 	tcpProbeAttemptsPerRun      = 4
-	icmpProbePacketsPerRun      = 10
+	icmpProbeSamplesPerInterval = 10
 )
 
 type Config struct {

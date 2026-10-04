@@ -858,7 +858,7 @@ func valueOrZero[T ~int64 | ~uint64](value *T) T {
 }
 
 func (a *Agent) networkWorker(ctx context.Context) {
-	var lastIP, lastProbe time.Time
+	var lastIP, lastProbe, lastICMPSample time.Time
 	histories := make(map[string]*rollingProbeHistory)
 	timer := time.NewTimer(0)
 	defer timer.Stop()
@@ -868,6 +868,7 @@ func (a *Agent) networkWorker(ctx context.Context) {
 			return
 		case <-a.networkWake:
 			lastProbe = time.Time{}
+			lastICMPSample = time.Time{}
 			resetTimer(timer, 0)
 		case now := <-timer.C:
 			cfg := a.configSnapshot()
@@ -876,7 +877,20 @@ func (a *Agent) networkWorker(ctx context.Context) {
 			ipInterval := time.Duration(cfg.IPRefreshInterval) * time.Second
 			probeInterval := time.Duration(cfg.ProbeInterval) * time.Second
 			probeWindow := time.Duration(cfg.ProbeWindow) * time.Second
-			maxSamples := (cfg.ProbeWindow + cfg.ProbeInterval - 1) / cfg.ProbeInterval
+			icmpInterval := icmpSampleInterval(probeInterval)
+			hasICMP := false
+			active := make(map[string]struct{}, len(cfg.Probes))
+			for _, node := range cfg.Probes {
+				active[node.ID] = struct{}{}
+				if node.Mode == pingModeICMP {
+					hasICMP = true
+				}
+			}
+			for id := range histories {
+				if _, ok := active[id]; !ok {
+					delete(histories, id)
+				}
+			}
 			if lastIP.IsZero() || now.Sub(lastIP) >= ipInterval {
 				usePublicDNS := usePublicDNSResolver(cfg)
 				lookupTimeout := time.Duration(cfg.IPLookupTimeoutMS) * time.Millisecond
@@ -885,8 +899,10 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				lastIP = now
 				needUpdate = true
 			}
-			if lastProbe.IsZero() || now.Sub(lastProbe) >= probeInterval {
-				a.log.debugf("network probe run nodes=%d interval=%ds window=%ds", len(cfg.Probes), cfg.ProbeInterval, cfg.ProbeWindow)
+			publishProbes := lastProbe.IsZero() || now.Sub(lastProbe) >= probeInterval
+			sampleICMP := hasICMP && (lastICMPSample.IsZero() || now.Sub(lastICMPSample) >= icmpInterval)
+			if publishProbes || sampleICMP {
+				a.log.debugf("network probe run nodes=%d interval=%ds icmp_sample_interval=%s window=%ds publish=%t", len(cfg.Probes), cfg.ProbeInterval, icmpInterval, cfg.ProbeWindow, publishProbes)
 				type measuredProbe struct {
 					node   ProbeNode
 					result ProbeResult
@@ -896,6 +912,12 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				var workers sync.WaitGroup
 				for _, node := range cfg.Probes {
 					node := node
+					if node.Mode == pingModeICMP && !sampleICMP {
+						continue
+					}
+					if node.Mode != pingModeICMP && !publishProbes {
+						continue
+					}
 					workers.Add(1)
 					go func() {
 						defer workers.Done()
@@ -905,7 +927,7 @@ func (a *Agent) networkWorker(ctx context.Context) {
 							return
 						}
 						defer func() { <-semaphore }()
-						attempts := probeAttemptsPerRun(node.Mode)
+						attempts := probeAttemptsPerMeasurement(node.Mode)
 						result := measureProbe(node.Mode, node.Target, attempts, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
 						select {
 						case results <- measuredProbe{node: node, result: result}:
@@ -915,24 +937,30 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				}
 				workers.Wait()
 				close(results)
-				active := make(map[string]struct{}, len(cfg.Probes))
 				for measured := range results {
-					active[measured.node.ID] = struct{}{}
 					history := histories[measured.node.ID]
 					if history == nil {
 						history = &rollingProbeHistory{}
 						histories[measured.node.ID] = history
 					}
+					maxSamples := probeHistorySampleLimit(measured.node.Mode, probeWindow, probeInterval)
 					history.add(now, probeHistoryKey(measured.node.Mode, measured.node.Target), measured.result, maxSamples)
-					snap.Results[measured.node.ID] = history.snapshot(now, probeWindow, maxSamples)
 				}
-				for id := range histories {
-					if _, ok := active[id]; !ok {
-						delete(histories, id)
+				if sampleICMP {
+					lastICMPSample = now
+				}
+				if publishProbes {
+					for _, node := range cfg.Probes {
+						history := histories[node.ID]
+						if history == nil {
+							continue
+						}
+						maxSamples := probeHistorySampleLimit(node.Mode, probeWindow, probeInterval)
+						snap.Results[node.ID] = history.snapshot(now, probeWindow, maxSamples)
 					}
+					lastProbe = now
+					needUpdate = true
 				}
-				lastProbe = now
-				needUpdate = true
 			}
 			if needUpdate {
 				a.mu.Lock()
@@ -962,6 +990,13 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				nextProbe = time.Until(lastProbe.Add(probeInterval))
 			}
 			next := min(nextIP, nextProbe)
+			if hasICMP {
+				nextICMP := icmpInterval
+				if !lastICMPSample.IsZero() {
+					nextICMP = time.Until(lastICMPSample.Add(icmpInterval))
+				}
+				next = min(next, nextICMP)
+			}
 			if next < 100*time.Millisecond {
 				next = 100 * time.Millisecond
 			}

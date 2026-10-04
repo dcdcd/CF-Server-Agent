@@ -212,7 +212,7 @@ func TestBuildProbeResultCalculatesLossFromFailedSamples(t *testing.T) {
 }
 
 func TestBuildProbeResultUsesTenPercentICMPResolution(t *testing.T) {
-	got := buildProbeResult(icmpProbePacketsPerRun, []int{10, 11, 12, 13, 14, 15, 16, 17, 18})
+	got := buildProbeResult(icmpProbeSamplesPerInterval, []int{10, 11, 12, 13, 14, 15, 16, 17, 18})
 	if !got.OK {
 		t.Fatal("expected probe result to be OK")
 	}
@@ -241,12 +241,32 @@ func TestICMPBatchIntervalFitsConfiguredTimeout(t *testing.T) {
 	}
 }
 
-func TestProbeAttemptsPerRunUsesHigherICMPSampleCount(t *testing.T) {
-	if got := probeAttemptsPerRun(pingModeICMP); got != 10 {
-		t.Fatalf("ICMP attempts = %d, want 10", got)
+func TestProbeAttemptsPerMeasurementUsesOneICMPSample(t *testing.T) {
+	if got := probeAttemptsPerMeasurement(pingModeICMP); got != 1 {
+		t.Fatalf("ICMP attempts = %d, want 1", got)
 	}
-	if got := probeAttemptsPerRun(pingModeTCP); got != 4 {
+	if got := probeAttemptsPerMeasurement(pingModeTCP); got != 4 {
 		t.Fatalf("TCP attempts = %d, want 4", got)
+	}
+}
+
+func TestICMPSamplesAreSpreadAcrossProbeInterval(t *testing.T) {
+	if got := icmpSampleInterval(5 * time.Second); got != 500*time.Millisecond {
+		t.Fatalf("5 second interval sample spacing = %s, want 500ms", got)
+	}
+	if got := icmpSampleInterval(20 * time.Second); got != 2*time.Second {
+		t.Fatalf("20 second interval sample spacing = %s, want 2s", got)
+	}
+}
+
+func TestProbeHistorySampleLimitKeepsEqualObservationWindows(t *testing.T) {
+	const window = 30 * time.Second
+	const interval = 5 * time.Second
+	if got := probeHistorySampleLimit(pingModeICMP, window, interval); got != 60 {
+		t.Fatalf("ICMP sample limit = %d, want 60", got)
+	}
+	if got := probeHistorySampleLimit(pingModeTCP, window, interval); got != 6 {
+		t.Fatalf("TCP sample limit = %d, want 6", got)
 	}
 }
 
@@ -313,6 +333,24 @@ func TestRollingProbeHistoryPreservesPartialPacketLoss(t *testing.T) {
 	}
 	if got.Loss != 19 {
 		t.Fatalf("Loss = %d, want 19", got.Loss)
+	}
+}
+
+func TestRollingProbeHistoryReportsOneLostUniformICMPSample(t *testing.T) {
+	const samples = 60
+	now := time.Unix(1000, 0)
+	history := rollingProbeHistory{}
+	for i := 0; i < samples; i++ {
+		result := ProbeResult{RTTMs: 20, Loss: 0, OK: true}
+		if i == 30 {
+			result = ProbeResult{RTTMs: -1, Loss: 100, OK: false}
+		}
+		history.add(now.Add(time.Duration(i)*500*time.Millisecond), "example.com", result, samples)
+	}
+
+	got := history.snapshot(now.Add(29500*time.Millisecond), 30*time.Second, samples)
+	if got.Loss != 2 {
+		t.Fatalf("Loss = %d, want 2", got.Loss)
 	}
 }
 
