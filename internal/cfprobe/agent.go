@@ -159,7 +159,7 @@ func (h rollingProbeHistory) snapshot(now time.Time, window time.Duration, maxSa
 	if len(values) == 0 {
 		return ProbeResult{RTTMs: -1, Loss: loss, OK: false}
 	}
-	return ProbeResult{RTTMs: medianInt(values), Loss: loss, OK: true}
+	return ProbeResult{RTTMs: averageInt(values), Loss: loss, OK: true}
 }
 
 func Run(configFile string, debug bool, version string) error {

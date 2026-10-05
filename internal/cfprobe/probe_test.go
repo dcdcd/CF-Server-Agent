@@ -203,8 +203,8 @@ func TestBuildProbeResultCalculatesLossFromFailedSamples(t *testing.T) {
 	if !got.OK {
 		t.Fatal("expected probe result to be OK")
 	}
-	if got.RTTMs != 20 {
-		t.Fatalf("RTTMs = %d, want 20", got.RTTMs)
+	if got.RTTMs != 23 {
+		t.Fatalf("RTTMs = %d, want 23", got.RTTMs)
 	}
 	if got.Loss != 25 {
 		t.Fatalf("Loss = %d, want 25", got.Loss)
@@ -318,7 +318,7 @@ func TestRollingProbeHistoryKeepsHybridLossIndependentFromTCPStatus(t *testing.T
 	}
 }
 
-func TestRollingProbeHistoryAggregatesTwoMinuteWindow(t *testing.T) {
+func TestRollingProbeHistoryAveragesTwoMinuteWindow(t *testing.T) {
 	const interval = 20 * time.Second
 	const window = 2 * time.Minute
 	const samples = 6
@@ -340,11 +340,29 @@ func TestRollingProbeHistoryAggregatesTwoMinuteWindow(t *testing.T) {
 	if !got.OK {
 		t.Fatal("expected rolling probe result to be OK")
 	}
-	if got.RTTMs != 25 {
-		t.Fatalf("RTTMs = %d, want 25", got.RTTMs)
+	if got.RTTMs != 40 {
+		t.Fatalf("RTTMs = %d, want 40", got.RTTMs)
 	}
 	if got.Loss != 33 {
 		t.Fatalf("Loss = %d, want 33", got.Loss)
+	}
+}
+
+func TestRollingProbeHistoryAverageReflectsLatencySpike(t *testing.T) {
+	const samples = 6
+	now := time.Unix(1000, 0)
+	history := rollingProbeHistory{}
+	for i := 0; i < samples; i++ {
+		rtt := 20
+		if i == samples-1 {
+			rtt = 200
+		}
+		history.add(now.Add(time.Duration(i)*20*time.Second), "example.com", ProbeResult{RTTMs: rtt, OK: true}, samples)
+	}
+
+	got := history.snapshot(now.Add(100*time.Second), 2*time.Minute, samples)
+	if !got.OK || got.RTTMs != 50 || got.Loss != 0 {
+		t.Fatalf("rolling result = %+v, want RTT 50 and loss 0", got)
 	}
 }
 

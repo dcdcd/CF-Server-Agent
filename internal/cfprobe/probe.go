@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -424,16 +423,19 @@ func buildProbeResult(count int, values []int) ProbeResult {
 	if ok == 0 {
 		return ProbeResult{RTTMs: -1, Loss: 100, OK: false}
 	}
-	return ProbeResult{RTTMs: medianInt(values), Loss: (count - ok) * 100 / count, OK: true}
+	return ProbeResult{RTTMs: averageInt(values), Loss: (count - ok) * 100 / count, OK: true}
 }
 
-func medianInt(values []int) int {
-	sort.Ints(values)
-	median := values[len(values)/2]
-	if len(values)%2 == 0 {
-		median = (values[len(values)/2-1] + values[len(values)/2]) / 2
+func averageInt(values []int) int {
+	if len(values) == 0 {
+		return 0
 	}
-	return median
+
+	var total int64
+	for _, value := range values {
+		total += int64(value)
+	}
+	return int((total + int64(len(values))/2) / int64(len(values)))
 }
 
 func measurePing(kind, target string, timeout time.Duration) (int, error) {
