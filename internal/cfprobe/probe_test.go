@@ -250,6 +250,19 @@ func TestProbeAttemptsPerMeasurementUsesOneICMPSample(t *testing.T) {
 	}
 }
 
+func TestHybridProbeComponentsKeepTCPAndICMPCadencesSeparate(t *testing.T) {
+	if got := scheduledProbeComponentModes(pingModeHybrid, false, true); len(got) != 1 || got[0] != pingModeICMP {
+		t.Fatalf("ICMP-only hybrid schedule = %#v, want [icmp]", got)
+	}
+	got := scheduledProbeComponentModes(pingModeHybrid, true, true)
+	if len(got) != 2 || got[0] != pingModeTCP || got[1] != pingModeICMP {
+		t.Fatalf("full hybrid schedule = %#v, want [tcp icmp]", got)
+	}
+	if tcpID, icmpID := probeHistoryID("edge", pingModeHybrid, pingModeTCP), probeHistoryID("edge", pingModeHybrid, pingModeICMP); tcpID == icmpID {
+		t.Fatalf("hybrid histories share id %q", tcpID)
+	}
+}
+
 func TestICMPSamplesAreSpreadAcrossProbeInterval(t *testing.T) {
 	if got := icmpSampleInterval(5 * time.Second); got != 500*time.Millisecond {
 		t.Fatalf("5 second interval sample spacing = %s, want 500ms", got)
@@ -280,6 +293,28 @@ func TestBuildProbeResultAllSamplesLost(t *testing.T) {
 	}
 	if got.Loss != 100 {
 		t.Fatalf("Loss = %d, want 100", got.Loss)
+	}
+}
+
+func TestCombineHybridProbeResultUsesTCPRTTAndICMPLoss(t *testing.T) {
+	got := combineHybridProbeResult(
+		ProbeResult{RTTMs: 42, Loss: 100, OK: true},
+		ProbeResult{RTTMs: 18, Loss: 25, OK: true},
+	)
+	if !got.OK || got.RTTMs != 42 || got.Loss != 25 {
+		t.Fatalf("hybrid result = %+v, want TCP RTT 42 and ICMP loss 25", got)
+	}
+}
+
+func TestRollingProbeHistoryKeepsHybridLossIndependentFromTCPStatus(t *testing.T) {
+	now := time.Unix(1000, 0)
+	history := rollingProbeHistory{}
+	history.add(now, "hybrid\x00example.com:443", ProbeResult{RTTMs: -1, Loss: 0, OK: false}, 2)
+	history.add(now.Add(20*time.Second), "hybrid\x00example.com:443", ProbeResult{RTTMs: 30, Loss: 0, OK: true}, 2)
+
+	got := history.snapshot(now.Add(20*time.Second), 2*time.Minute, 2)
+	if !got.OK || got.RTTMs != 30 || got.Loss != 0 {
+		t.Fatalf("hybrid rolling result = %+v, want RTT 30 and loss 0", got)
 	}
 }
 

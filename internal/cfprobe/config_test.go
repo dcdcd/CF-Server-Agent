@@ -48,7 +48,11 @@ func TestConfigPersistsUpdateProxy(t *testing.T) {
 	cfg.IPv6LookupURLs = []string{"https://v6.example.com/ip"}
 	cfg.UpdateCheckInterval = 43200
 	cfg.StateDir = t.TempDir() + "/state"
-	cfg.Probes = []ProbeNode{{ID: "edge", Target: "example.com:443", Mode: pingModeTCP}, {ID: "lan", Target: "192.0.2.1", Mode: pingModeICMP}}
+	cfg.Probes = []ProbeNode{
+		{ID: "edge", Target: "example.com:443", Mode: pingModeTCP},
+		{ID: "lan", Target: "192.0.2.1", Mode: pingModeICMP},
+		{ID: "mixed", Target: "[2001:db8::1]:8443", Mode: pingModeHybrid},
+	}
 
 	if err := writeConfig(path, cfg); err != nil {
 		t.Fatalf("writeConfig returned error: %v", err)
@@ -139,6 +143,16 @@ func TestReadConfigInvalidatesRemoteMD5WhenManagedFieldMissing(t *testing.T) {
 	}
 	if got.ConfigMD5 != "none" {
 		t.Fatalf("ConfigMD5 = %q, want none when RESET_DAY is missing", got.ConfigMD5)
+	}
+}
+
+func TestNormalizeProbeModeAcceptsHybrid(t *testing.T) {
+	got, err := normalizeProbeMode(" HYBRID ")
+	if err != nil {
+		t.Fatalf("normalizeProbeMode returned error: %v", err)
+	}
+	if got != pingModeHybrid {
+		t.Fatalf("normalizeProbeMode = %q, want %q", got, pingModeHybrid)
 	}
 }
 

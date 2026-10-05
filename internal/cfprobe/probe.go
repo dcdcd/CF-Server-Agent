@@ -245,6 +245,46 @@ func probeAttemptsPerMeasurement(kind string) int {
 	return tcpProbeAttemptsPerRun
 }
 
+func probeComponentModes(kind string) []string {
+	if kind == pingModeHybrid {
+		return []string{pingModeTCP, pingModeICMP}
+	}
+	if kind == pingModeICMP {
+		return []string{pingModeICMP}
+	}
+	return []string{pingModeTCP}
+}
+
+func scheduledProbeComponentModes(kind string, publishProbes, sampleICMP bool) []string {
+	modes := make([]string, 0, 2)
+	if kind == pingModeHybrid {
+		if publishProbes {
+			modes = append(modes, pingModeTCP)
+		}
+		if sampleICMP {
+			modes = append(modes, pingModeICMP)
+		}
+		return modes
+	}
+	if kind == pingModeICMP {
+		if sampleICMP {
+			return append(modes, pingModeICMP)
+		}
+		return modes
+	}
+	if publishProbes {
+		return append(modes, pingModeTCP)
+	}
+	return modes
+}
+
+func probeHistoryID(nodeID, configuredMode, componentMode string) string {
+	if configuredMode == pingModeHybrid {
+		return nodeID + "\x00" + componentMode
+	}
+	return nodeID
+}
+
 func icmpSampleInterval(probeInterval time.Duration) time.Duration {
 	if probeInterval <= 0 {
 		return time.Second
@@ -315,7 +355,7 @@ func measureProbe(kind, target string, count, defaultPort int, timeout time.Dura
 	if strings.TrimSpace(target) == "" {
 		return ProbeResult{RTTMs: -1, Loss: 100, OK: false}
 	}
-	if kind != pingModeICMP {
+	if kind != pingModeICMP && kind != pingModeHybrid {
 		kind = pingModeTCP
 	}
 	if count < 1 {
@@ -326,6 +366,11 @@ func measureProbe(kind, target string, count, defaultPort int, timeout time.Dura
 	}
 	if timeout <= 0 {
 		timeout = defaultPingTimeout
+	}
+	if kind == pingModeHybrid {
+		tcpResult := measureProbe(pingModeTCP, target, count, defaultPort, timeout, log)
+		icmpResult := measureProbe(pingModeICMP, target, count, defaultPort, timeout, log)
+		return combineHybridProbeResult(tcpResult, icmpResult)
 	}
 	if kind == pingModeICMP {
 		result, err := measureICMPProbe(target, count, timeout)
@@ -348,8 +393,20 @@ func measureProbe(kind, target string, count, defaultPort int, timeout time.Dura
 	return buildProbeResult(count, values[:ok])
 }
 
+func combineHybridProbeResult(tcpResult, icmpResult ProbeResult) ProbeResult {
+	result := ProbeResult{RTTMs: -1, Loss: 100, OK: false}
+	if tcpResult.OK && tcpResult.RTTMs >= 0 {
+		result.RTTMs = tcpResult.RTTMs
+		result.OK = true
+	}
+	if icmpResult.Loss >= 0 && icmpResult.Loss <= 100 {
+		result.Loss = icmpResult.Loss
+	}
+	return result
+}
+
 func probeHistoryKey(kind, target string) string {
-	if kind != pingModeICMP {
+	if kind != pingModeICMP && kind != pingModeHybrid {
 		kind = pingModeTCP
 	}
 	target = strings.TrimSpace(target)

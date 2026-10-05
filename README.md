@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/dcdcd/CF-Server-Agent/main/install.
 安装阶段只需提供身份和控制端地址。服务器分组、检测节点及运行参数均由控制端动态下发：
 
 - `collect_interval`、`report_interval`：资源采样与上报间隔。
-- `probes`：每台服务器选择的动态节点；每个节点可使用 `tcp` 或 `icmp`。
+- `probes`：每台服务器选择的动态节点；每个节点可使用 `tcp`、`icmp` 或 `hybrid`。`hybrid` 使用 TCPing 测量延迟、ICMP 测量丢包。
 - `probe_interval`、`probe_window`：检测频率与滚动统计窗口。
 - `probe_concurrency`：同时执行的最大检测任务数。
 - `probe_timeout_ms`：单次检测超时。

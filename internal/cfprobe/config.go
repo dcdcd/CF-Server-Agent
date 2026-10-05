@@ -162,10 +162,10 @@ func normalizeProbeMode(raw string) (string, error) {
 	switch raw {
 	case "", pingModeTCP:
 		return pingModeTCP, nil
-	case pingModeICMP:
-		return pingModeICMP, nil
+	case pingModeICMP, pingModeHybrid:
+		return raw, nil
 	default:
-		return "", fmt.Errorf("检测方式仅支持 tcp 或 icmp")
+		return "", fmt.Errorf("检测方式仅支持 tcp、icmp 或 hybrid")
 	}
 }
 

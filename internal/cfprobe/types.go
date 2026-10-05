@@ -16,6 +16,7 @@ const (
 	connectionModeHTTP          = "http"
 	pingModeTCP                 = "tcp"
 	pingModeICMP                = "icmp"
+	pingModeHybrid              = "hybrid"
 	tcpProbeAttemptsPerRun      = 4
 	icmpProbeSamplesPerInterval = 10
 )

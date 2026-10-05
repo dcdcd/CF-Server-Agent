@@ -879,10 +879,12 @@ func (a *Agent) networkWorker(ctx context.Context) {
 			probeWindow := time.Duration(cfg.ProbeWindow) * time.Second
 			icmpInterval := icmpSampleInterval(probeInterval)
 			hasICMP := false
-			active := make(map[string]struct{}, len(cfg.Probes))
+			active := make(map[string]struct{}, len(cfg.Probes)*2)
 			for _, node := range cfg.Probes {
-				active[node.ID] = struct{}{}
-				if node.Mode == pingModeICMP {
+				for _, mode := range probeComponentModes(node.Mode) {
+					active[probeHistoryID(node.ID, node.Mode, mode)] = struct{}{}
+				}
+				if node.Mode == pingModeICMP || node.Mode == pingModeHybrid {
 					hasICMP = true
 				}
 			}
@@ -905,53 +907,69 @@ func (a *Agent) networkWorker(ctx context.Context) {
 				a.log.debugf("network probe run nodes=%d interval=%ds icmp_sample_interval=%s window=%ds publish=%t", len(cfg.Probes), cfg.ProbeInterval, icmpInterval, cfg.ProbeWindow, publishProbes)
 				type measuredProbe struct {
 					node   ProbeNode
+					mode   string
 					result ProbeResult
 				}
-				results := make(chan measuredProbe, len(cfg.Probes))
+				results := make(chan measuredProbe, len(cfg.Probes)*2)
 				semaphore := make(chan struct{}, cfg.ProbeConcurrency)
 				var workers sync.WaitGroup
 				for _, node := range cfg.Probes {
 					node := node
-					if node.Mode == pingModeICMP && !sampleICMP {
-						continue
+					for _, mode := range scheduledProbeComponentModes(node.Mode, publishProbes, sampleICMP) {
+						mode := mode
+						workers.Add(1)
+						go func() {
+							defer workers.Done()
+							select {
+							case semaphore <- struct{}{}:
+							case <-ctx.Done():
+								return
+							}
+							defer func() { <-semaphore }()
+							attempts := probeAttemptsPerMeasurement(mode)
+							result := measureProbe(mode, node.Target, attempts, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
+							select {
+							case results <- measuredProbe{node: node, mode: mode, result: result}:
+							case <-ctx.Done():
+							}
+						}()
 					}
-					if node.Mode != pingModeICMP && !publishProbes {
-						continue
-					}
-					workers.Add(1)
-					go func() {
-						defer workers.Done()
-						select {
-						case semaphore <- struct{}{}:
-						case <-ctx.Done():
-							return
-						}
-						defer func() { <-semaphore }()
-						attempts := probeAttemptsPerMeasurement(node.Mode)
-						result := measureProbe(node.Mode, node.Target, attempts, defaultMetricsTCPPort, time.Duration(cfg.ProbeTimeoutMS)*time.Millisecond, a.log)
-						select {
-						case results <- measuredProbe{node: node, result: result}:
-						case <-ctx.Done():
-						}
-					}()
 				}
 				workers.Wait()
 				close(results)
 				for measured := range results {
-					history := histories[measured.node.ID]
+					historyID := probeHistoryID(measured.node.ID, measured.node.Mode, measured.mode)
+					history := histories[historyID]
 					if history == nil {
 						history = &rollingProbeHistory{}
-						histories[measured.node.ID] = history
+						histories[historyID] = history
 					}
-					maxSamples := probeHistorySampleLimit(measured.node.Mode, probeWindow, probeInterval)
-					history.add(now, probeHistoryKey(measured.node.Mode, measured.node.Target), measured.result, maxSamples)
+					maxSamples := probeHistorySampleLimit(measured.mode, probeWindow, probeInterval)
+					history.add(now, probeHistoryKey(measured.mode, measured.node.Target), measured.result, maxSamples)
 				}
 				if sampleICMP {
 					lastICMPSample = now
 				}
 				if publishProbes {
 					for _, node := range cfg.Probes {
-						history := histories[node.ID]
+						if node.Mode == pingModeHybrid {
+							tcpHistory := histories[probeHistoryID(node.ID, node.Mode, pingModeTCP)]
+							icmpHistory := histories[probeHistoryID(node.ID, node.Mode, pingModeICMP)]
+							if tcpHistory == nil && icmpHistory == nil {
+								continue
+							}
+							tcpResult := ProbeResult{RTTMs: -1, Loss: 100, OK: false}
+							icmpResult := ProbeResult{RTTMs: -1, Loss: 100, OK: false}
+							if tcpHistory != nil {
+								tcpResult = tcpHistory.snapshot(now, probeWindow, probeHistorySampleLimit(pingModeTCP, probeWindow, probeInterval))
+							}
+							if icmpHistory != nil {
+								icmpResult = icmpHistory.snapshot(now, probeWindow, probeHistorySampleLimit(pingModeICMP, probeWindow, probeInterval))
+							}
+							snap.Results[node.ID] = combineHybridProbeResult(tcpResult, icmpResult)
+							continue
+						}
+						history := histories[probeHistoryID(node.ID, node.Mode, node.Mode)]
 						if history == nil {
 							continue
 						}
